@@ -5,6 +5,10 @@
   const soundToggle = document.querySelector('.sound-toggle');
   if (!video || !toggle || !soundToggle) return;
   const motion = matchMedia('(prefers-reduced-motion: reduce)');
+  let audioContext = null;
+  let audioSource = null;
+  let gainNode = null;
+  let audioGraphReady = false;
   let pausedByUser = false;
   let soundOn = false;
   let autoplayTried = false;
@@ -15,6 +19,35 @@
       video.load();
     }
   };
+  const enableReducedSound = async () => {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (AudioContextClass) {
+      try {
+        if (!audioContext) audioContext = new AudioContextClass();
+        if (!audioSource) audioSource = audioContext.createMediaElementSource(video);
+        if (!gainNode) {
+          gainNode = audioContext.createGain();
+          gainNode.gain.value = 0.6;
+        }
+        if (!audioGraphReady) {
+          audioSource.connect(gainNode);
+          gainNode.connect(audioContext.destination);
+          audioGraphReady = true;
+        }
+        if (audioContext.state === 'suspended') await audioContext.resume();
+        try { video.volume = 1; } catch { /* The gain node controls the audible level. */ }
+        return true;
+      } catch {
+        if (audioSource) return false;
+      }
+    }
+    try {
+      video.volume = 0.6;
+      return video.volume === 0.6;
+    } catch {
+      return false;
+    }
+  };
   const sync = () => {
     toggle.innerHTML = video.paused ? 'Play film <span aria-hidden="true">▷</span>' : 'Pause film <span aria-hidden="true">Ⅱ</span>';
     toggle.setAttribute('aria-label', video.paused ? 'Play StyleLock film' : 'Pause StyleLock film');
@@ -22,24 +55,11 @@
     soundToggle.setAttribute('aria-label', soundOn ? 'Mute the original reel audio' : 'Enable the original reel audio');
     soundToggle.setAttribute('aria-pressed', String(soundOn));
   };
-  const startPlayback = async (allowSoundAutoplay = false) => {
+  const startPlayback = async () => {
     load();
-    if (allowSoundAutoplay && !autoplayTried) {
-      autoplayTried = true;
-      video.muted = false;
-      try {
-        await video.play();
-        soundOn = true;
-      } catch {
-        soundOn = false;
-        video.muted = true;
-        try { await video.play(); } catch { /* The poster and play control remain available. */ }
-      }
-    } else {
-      if (!allowSoundAutoplay) autoplayTried = true;
-      video.muted = !soundOn;
-      try { await video.play(); } catch { /* Autoplay denial is a normal browser policy outcome. */ }
-    }
+    autoplayTried = true;
+    video.muted = !soundOn;
+    try { await video.play(); } catch { /* Autoplay denial is a normal browser policy outcome. */ }
     sync();
   };
   const update = () => {
@@ -47,7 +67,7 @@
       video.pause();
       sync();
     } else if (!motion.matches) {
-      void startPlayback(true);
+      void startPlayback();
     }
   };
   toggle.hidden = false;
@@ -55,15 +75,20 @@
   toggle.addEventListener('click', () => {
     if (video.paused) {
       pausedByUser = false;
-      void startPlayback(false);
+      void startPlayback();
     } else {
       pausedByUser = true;
       video.pause();
     }
   });
-  soundToggle.addEventListener('click', () => {
-    soundOn = !soundOn;
-    video.muted = !soundOn;
+  soundToggle.addEventListener('click', async () => {
+    if (soundOn) {
+      soundOn = false;
+      video.muted = true;
+    } else if (await enableReducedSound()) {
+      soundOn = true;
+      video.muted = false;
+    }
     sync();
   });
   video.addEventListener('play', sync);
@@ -78,7 +103,7 @@
       video.pause();
       sync();
     } else {
-      void startPlayback(true);
+      void startPlayback();
     }
   }, { threshold: 0.15 }).observe(video);
   motion.addEventListener('change', () => {
