@@ -27,7 +27,7 @@
         if (!audioSource) audioSource = audioContext.createMediaElementSource(video);
         if (!gainNode) {
           gainNode = audioContext.createGain();
-          gainNode.gain.value = 0.6;
+          gainNode.gain.value = 0.3;
         }
         if (!audioGraphReady) {
           audioSource.connect(gainNode);
@@ -42,8 +42,8 @@
       }
     }
     try {
-      video.volume = 0.6;
-      return video.volume === 0.6;
+      video.volume = 0.3;
+      return video.volume === 0.3;
     } catch {
       return false;
     }
